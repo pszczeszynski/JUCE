@@ -3102,6 +3102,12 @@ public:
                     editController->setState (controllerStream.get());
             }
         }
+        else
+        {
+            // create ReadOnlyBStream
+            Steinberg::IBStream *stream = new Steinberg::MemoryStream ((void*) data, (Steinberg::int64) sizeInBytes);
+            holder->component->setState (stream);
+        }
     }
 
     void setComponentStateAndResetParameters (Steinberg::MemoryStream& stream)
