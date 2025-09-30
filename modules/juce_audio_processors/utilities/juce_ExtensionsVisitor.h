@@ -93,6 +93,7 @@ struct ExtensionsVisitor
         virtual Steinberg::Vst::IComponent* getIComponentPtr() const noexcept = 0;
 
         virtual MemoryBlock getPreset() const = 0;
+        virtual void getPresetRaw(MemoryBlock&) const = 0;
         virtual bool setPreset (const MemoryBlock&) const = 0;
     };
 

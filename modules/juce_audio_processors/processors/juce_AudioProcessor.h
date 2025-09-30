@@ -1103,6 +1103,7 @@ public:
         @see getCurrentProgramStateInformation
     */
     virtual void getStateInformation (juce::MemoryBlock& destData) = 0;
+    //virtual void getStateInformationRaw(juce::MemoryBlock& destData) {};
 
     /** The host will call this method if it wants to save the state of just the processor's
         current program.

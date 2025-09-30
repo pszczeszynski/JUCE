@@ -2489,6 +2489,11 @@ public:
 
             MemoryBlock getPreset() const override             { return instance->getStateForPresetFile(); }
 
+            void getPresetRaw (MemoryBlock& dest) const override
+            {
+                instance->getStateInformationRaw(dest);
+            }
+
             bool setPreset (const MemoryBlock& rawData) const override
             {
                 return instance->setStateFromPresetFile (rawData);
@@ -3059,7 +3064,6 @@ public:
         MessageManagerLock lock;
 
         parameterDispatcher.flush();
-
         XmlElement state ("VST3PluginState");
 
         appendStateFrom (state, holder->component, "IComponent");
@@ -3075,7 +3079,7 @@ public:
         // We'll lock the message manager here as a safety precaution, but some
         // plugins may still misbehave!
 
-        JUCE_ASSERT_MESSAGE_THREAD
+        //JUCE_ASSERT_MESSAGE_THREAD
         MessageManagerLock lock;
 
         parameterDispatcher.flush();
@@ -3104,9 +3108,15 @@ public:
         }
         else
         {
+            // raw case, should be symmetrical to the getState raw
             // create ReadOnlyBStream
-            Steinberg::IBStream *stream = new Steinberg::MemoryStream ((void*) data, (Steinberg::int64) sizeInBytes);
-            holder->component->setState (stream);
+            Steinberg::MemoryStream *stream = new Steinberg::MemoryStream ((void*) data, (Steinberg::int64) sizeInBytes);
+            holder->component->setState(stream);
+            Steinberg::int64 result;
+            stream->seek(0, IBStream::kIBSeekSet, &result);
+            setComponentStateAndResetParameters(*stream);
+
+            editController->setState(stream);
         }
     }
 
@@ -3144,6 +3154,61 @@ public:
             return { memoryStream->getData(), static_cast<size_t> (memoryStream->getSize()) };
 
         return {};
+    }
+    void getStateInformationRaw(juce::MemoryBlock& block) const
+    {
+        if (holder->component == nullptr)
+            return;
+
+        // Create a MemoryStream for the component state
+        Steinberg::MemoryStream componentStream;
+        componentStream.setSize(0);
+        componentStream.seek(0, Steinberg::IBStream::kIBSeekSet, nullptr);
+
+        // Retrieve component state
+        Steinberg::tresult resultComponent = holder->component->getState(&componentStream);
+
+        if (resultComponent == Steinberg::kResultOk)
+        {
+            // Get the compressed data
+            Steinberg::int64 compressedSize = componentStream.getSize();
+            const void* compressedData = componentStream.getData();
+
+            if (compressedSize > 0 && compressedData != nullptr)
+            {
+                // Decompress the data
+                juce::MemoryInputStream compressedStream(compressedData, static_cast<size_t>(compressedSize), false);
+                juce::MemoryOutputStream decompressedStream;
+
+                if (true)//juce::GZIPDecompressorInputStream::isGzipData(compressedStream))
+                {
+                    juce::GZIPDecompressorInputStream gzipStream(&compressedStream, true, juce::GZIPDecompressorInputStream::gzipFormat);
+                    decompressedStream << gzipStream;
+                }
+                else
+                {
+                    /*
+                    // Try Zlib decompression
+                    juce::MemoryInputStream zlibStream(compressedData, static_cast<size_t>(compressedSize), false);
+                    juce::Zlib::Inflator inflator(zlibStream);
+                    decompressedStream << inflator;
+                    */
+                }
+
+                // Copy decompressed data into the MemoryBlock
+                block.replaceWith(decompressedStream.getData(), decompressedStream.getDataSize());
+            }
+            else
+            {
+                // Handle the case where component state is empty
+                block.setSize(0);
+            }
+        }
+        else
+        {
+            // Handle the error if getState failed
+            block.setSize(0);
+        }
     }
 
     bool setStateFromPresetFile (const MemoryBlock& rawData) const
